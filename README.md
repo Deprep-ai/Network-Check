@@ -81,7 +81,10 @@ for dt, ssid, _ in rows:
     print(f"{t_str:<26} | {ssid}")
 EOF
 ```
-
+# VNC Default
+```
+log show --last 2h --style compact --info --predicate '(process == "screensharingd") OR (process == "ARDAgent") OR (eventMessage CONTAINS[c] "VNC")' 2>/dev/null
+```
 
 # VNC Check
 
