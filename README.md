@@ -81,3 +81,54 @@ for dt, ssid, _ in rows:
     print(f"{t_str:<26} | {ssid}")
 EOF
 ```
+
+
+# VNC Check
+
+```
+cat << 'EOF' > ~/check_remote.py
+import sys, json
+from datetime import datetime
+
+raw = sys.stdin.read()
+start_idx = raw.find("[")
+logs = json.loads(raw[start_idx:]) if start_idx != -1 else []
+
+if not logs:
+    print("No remote desktop activity found.")
+    sys.exit(0)
+
+def detect_service(entry):
+    proc = entry.get("processImagePath", "")
+    msg = entry.get("eventMessage", "")
+    if "ARDAgent" in proc:
+        return "Apple Remote Desktop (ARD)"
+    if "screensharingd" in proc:
+        return "macOS Screen Sharing"
+    if "vnc" in msg.lower():
+        return f"VNC ({proc.split('/')[-1]})"
+    return proc.split("/")[-1] or "Unknown"
+
+def parse_ts(ts_str):
+    return datetime.strptime(ts_str[:19], "%Y-%m-%d %H:%M:%S")
+
+sessions = []
+for entry in logs:
+    ts = parse_ts(entry["timestamp"])
+    service = detect_service(entry)
+    if sessions and sessions[-1]["service"] == service and (ts - sessions[-1]["end"]).total_seconds() < 300:
+        sessions[-1]["end"] = ts
+    else:
+        sessions.append({"start": ts, "end": ts, "service": service})
+
+print(f"{'Start Time':<21} {'End Time':<21} {'Duration':<10} {'Remote Service'}")
+print("-" * 78)
+for s in sessions:
+    dur = str(s["end"] - s["start"])
+    print(f"{str(s['start']):<21} {str(s['end']):<21} {dur:<10} {s['service']}")
+EOF
+```
+
+```
+log show --last 2h --style json --info --predicate '(process == "screensharingd") OR (process == "ARDAgent") OR ((eventMessage CONTAINS[c] "VNC") AND (process != "mobileassetd"))' 2>/dev/null | python3 ~/check_remote.py
+```
